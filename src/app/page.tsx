@@ -1,103 +1,167 @@
-import Image from "next/image";
+"use client";
+
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+// Removed old component imports
+// import HtmlUploader from '@/components/HtmlUploader';
+// import LeaderboardTable from '@/components/LeaderboardTable';
+// import TotalScoreChart from '@/components/TotalScoreChart';
+// import ProblemComparisonChart from '@/components/ProblemComparisonChart';
+// import LeaderboardInsights from '@/components/LeaderboardInsights';
+// import LogComparison from '@/components/LogComparison'; // Old wrapper component
+
+// Import new unified components
+import CombinedFileUploader from '@/components/CombinedFileUploader';
+import UnifiedAnalysisDisplay from '@/components/UnifiedAnalysisDisplay'; // New wrapper
+import { UnifiedDataItem } from '@/types/unified';
+import { Toaster } from 'sonner';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+// Removed unused imports
+// import { parseClientSide } from '@/utils/leaderboardParser';
+// import { LeaderboardData } from '@/types/leaderboard';
+// import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+// import { Separator } from '@/components/ui/separator';
+
+// Placeholder for OwnerVisibilityControl component - will be created next
+interface OwnerVisibilityControlProps {
+  owners: string[];
+  visibility: Map<string, boolean>;
+  onToggle: (owner: string) => void;
+}
+
+const OwnerVisibilityControl: React.FC<OwnerVisibilityControlProps> = ({ owners, visibility, onToggle }) => {
+  if (owners.length === 0) {
+    return null;
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Filter Submissions</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-sm text-muted-foreground">Select submissions to include in the analysis:</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-2">
+          {owners.map(owner => (
+            <div key={owner} className="flex items-center space-x-2">
+              <Checkbox 
+                id={`vis-${owner}`} 
+                checked={visibility.get(owner) !== false} // Default to true if not in map (should be)
+                onCheckedChange={() => onToggle(owner)} 
+              />
+              <Label htmlFor={`vis-${owner}`} className="text-sm font-normal truncate" title={owner}>
+                {owner}
+              </Label>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  // State to hold all unified data items from all sources
+  const [masterData, setMasterData] = useState<UnifiedDataItem[]>([]);
+  const [error, setError] = useState<string | null>(null); // Keep error state for potential future use
+  const [ownerVisibility, setOwnerVisibility] = useState<Map<string, boolean>>(new Map());
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const uniqueOwners = useMemo(() => {
+    const owners = new Set(masterData.map(item => item.entryOwner));
+    return Array.from(owners).sort();
+  }, [masterData]);
+
+  useEffect(() => {
+    setOwnerVisibility(prevVisibility => {
+      const newVisibility = new Map(prevVisibility);
+      uniqueOwners.forEach(owner => {
+        if (!newVisibility.has(owner)) { // Add new owners as visible by default
+          newVisibility.set(owner, true);
+        }
+      });
+      // Optional: Remove owners from visibility map if they no longer exist in masterData
+      // This depends on desired behavior when files are cleared/changed
+      // For now, we keep them, they just won't affect filtering if not in current masterData
+      return newVisibility;
+    });
+  }, [uniqueOwners]);
+
+  // Callback for the CombinedFileUploader when new files are successfully processed
+  const handleDataUpdate = useCallback((newData: UnifiedDataItem[]) => {
+    // Append new data to existing master data
+    setMasterData(prevData => [...prevData, ...newData]);
+    setError(null); // Clear any previous errors
+  }, []);
+
+  // Callback for the CombinedFileUploader when files are cleared
+  const handleDataCleared = useCallback((sourceNameToClear?: string) => {
+    if (sourceNameToClear) {
+      // Remove data items belonging to the specific source file
+      setMasterData(prevData => prevData.filter(item => item.sourceName !== sourceNameToClear));
+      // Note: ownerVisibility won't automatically remove owners if their last data source is cleared.
+      // They will just become ineffective for filtering. This behavior might need refinement.
+    } else {
+      // Clear all data
+      setMasterData([]);
+      setOwnerVisibility(new Map()); // Clear visibility when all data is cleared
+    }
+    setError(null);
+  }, []);
+
+  const toggleOwnerVisibility = useCallback((owner: string) => {
+    setOwnerVisibility(prev => {
+      const newVisibility = new Map(prev);
+      newVisibility.set(owner, !prev.get(owner));
+      return newVisibility;
+    });
+  }, []);
+
+  const visibleData = useMemo(() => {
+    if (ownerVisibility.size === 0 && uniqueOwners.length > 0) {
+      // If visibility map isn't populated yet but we have owners, assume all visible
+      // This handles initial load or race conditions before useEffect populates map
+      return masterData;
+    }
+    return masterData.filter(item => ownerVisibility.get(item.entryOwner) !== false);
+  }, [masterData, ownerVisibility, uniqueOwners]);
+
+  return (
+    <main className="min-h-screen bg-slate-100 dark:bg-slate-900 p-4 md:p-8">
+      <Toaster />
+      <div className="max-w-7xl mx-auto space-y-8">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold mb-2">Performance Analysis Tool</h1>
+          <p className="text-muted-foreground">
+            Upload and compare results from Leaderboard HTML or Solver LOG files
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+
+        {/* Unified Uploader */}
+        <CombinedFileUploader 
+          onDataUpdate={handleDataUpdate} 
+          onDataCleared={handleDataCleared} 
+        />
+
+        {/* Owner Visibility Control - render if there's data */}
+        {masterData.length > 0 && (
+          <OwnerVisibilityControl 
+            owners={uniqueOwners} 
+            visibility={ownerVisibility} 
+            onToggle={toggleOwnerVisibility} 
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+        )}
+
+        {/* Display Area for Unified Analysis Components */}
+        {error && (
+          <div className="p-4 bg-destructive/10 border border-destructive/20 rounded text-destructive">
+            {error} 
+          </div>
+        )}
+
+        {/* Pass the combined masterData to the display component */}
+        <UnifiedAnalysisDisplay unifiedData={visibleData} />
+        
+      </div>
+    </main>
   );
 }

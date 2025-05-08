@@ -1,12 +1,10 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UnifiedDataItem, UnifiedData } from '@/types/unified'; // Use UnifiedData
-import { calculateUnifiedMetrics, OwnerMetrics } from '@/utils/unifiedAnalysis'; // Use unified metrics calculation
+import { UnifiedDataItem, UnifiedData } from '@/types/unified';
+import { calculateUnifiedMetrics, OwnerMetrics } from '@/utils/unifiedAnalysis';
 import {
   ResponsiveContainer,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -16,14 +14,14 @@ import {
   ComposedChart,
   PieChart,
   Pie,
-  Cell
-} from 'recharts'; // Keep recharts imports
+  Cell,
+} from 'recharts';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface UnifiedPerformanceChartProps {
   unifiedData: UnifiedData;
 }
 
-// Helper to generate colors for different owners
 const generateColor = (index: number): string => {
   const colors = [
     '#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088fe',
@@ -32,21 +30,30 @@ const generateColor = (index: number): string => {
   return colors[index % colors.length];
 };
 
+interface SummaryTableRow {
+  owner: string;
+  totalScore: number;
+  avgScore: number;
+  solvedCount: number;
+  bestSolutions: number;
+  totalTime: number;
+  totalProblems: number;
+}
+
 export default function UnifiedPerformanceChart({ unifiedData }: UnifiedPerformanceChartProps) {
   const metricsData = useMemo(() => calculateUnifiedMetrics(unifiedData), [unifiedData]);
 
   const { 
     sizeData,
-    solverComparisonData,
-    bestSolutionsData
+    bestSolutionsData,
+    summaryTableData
   } = useMemo(() => {
     if (metricsData.size === 0) {
-      return { sizeData: [], solverComparisonData: [], bestSolutionsData: [] };
+      return { sizeData: [], bestSolutionsData: [], summaryTableData: [] };
     }
 
     const owners = Array.from(metricsData.keys()).sort();
 
-    // Size comparison chart data
     const allSizesSet = new Set<number>();
     metricsData.forEach(data => {
       data.bySize.forEach((_, size) => {
@@ -57,45 +64,56 @@ export default function UnifiedPerformanceChart({ unifiedData }: UnifiedPerforma
 
     const sizeComparison = allSizes.map(size => {
       const entry: any = { size };
+      const instancesForThisSize = new Set<string>();
+      let totalEntriesForThisSize = 0;
+
       owners.forEach(owner => {
         const ownerMetrics = metricsData.get(owner)!;
         const sizeStats = ownerMetrics.bySize.get(size);
-        if (sizeStats && sizeStats.count > 0) {
-          entry[owner] = sizeStats.score / sizeStats.count; // Average score for this size
-        } else {
-          entry[owner] = null; // Use null for missing data points in line chart
+        entry[owner] = (sizeStats && sizeStats.count > 0) ? (sizeStats.score / sizeStats.count) : null;
+        if (sizeStats && sizeStats.instanceNames) {
+          sizeStats.instanceNames.forEach(name => instancesForThisSize.add(name));
+          totalEntriesForThisSize += sizeStats.count; // Sum of all individual entries making up the averages
         }
       });
+
+      let representativeInstancesDisplay = "";
+      if (instancesForThisSize.size === 1) {
+        representativeInstancesDisplay = `(Instance: ${instancesForThisSize.values().next().value})`;
+      } else if (instancesForThisSize.size > 1) {
+        // If there were multiple problem files of the same size, indicate that.
+        // The `totalEntriesForThisSize` reflects the sum of all individual log/leaderboard entries contributing to averages at this size point.
+        representativeInstancesDisplay = `(Avg. over ${instancesForThisSize.size} unique problem files of this size)`;
+      } // If instancesForThisSize.size is 0, display remains empty.
+      
+      entry.representativeInstancesDisplay = representativeInstancesDisplay;
+
       return entry;
     });
 
-    // Solver/Participant comparison chart data
-    const comparison = owners.map(owner => {
-      const data = metricsData.get(owner)!;
-      const solvedRatio = data.totalProblems > 0 ? (data.solvedCount / data.totalProblems) * 100 : 0;
-      const bestSolutionsPercent = data.solvedCount > 0 ? (data.bestSolutions / data.solvedCount) * 100 : 0;
-      return {
-        owner,
-        avgScore: data.avgScore === Infinity ? null : data.avgScore, // Handle potential Infinity avgScore
-        solvedCount: data.solvedCount,
-        totalProblems: data.totalProblems,
-        solvedRatio: solvedRatio,
-        bestSolutions: data.bestSolutions,
-        bestSolutionsPercent: bestSolutionsPercent
-      };
-    });
-    
-    // Best solutions pie chart data
     const bestSolutions = owners.map((owner, index) => ({
       name: owner,
       value: metricsData.get(owner)!.bestSolutions,
       color: generateColor(index)
-    })).filter(d => d.value > 0); // Only show owners with at least one best solution
+    })).filter(d => d.value > 0);
+
+    const summaryTable: SummaryTableRow[] = owners.map(owner => {
+      const data = metricsData.get(owner)!;
+      return {
+        owner,
+        totalScore: data.totalScore,
+        avgScore: data.avgScore === Infinity ? -1 : data.avgScore,
+        solvedCount: data.solvedCount,
+        bestSolutions: data.bestSolutions,
+        totalTime: data.totalTime,
+        totalProblems: data.totalProblems
+      };
+    });
 
     return { 
       sizeData: sizeComparison, 
-      solverComparisonData: comparison,
-      bestSolutionsData: bestSolutions
+      bestSolutionsData: bestSolutions,
+      summaryTableData: summaryTable
     };
 
   }, [metricsData]);
@@ -104,23 +122,59 @@ export default function UnifiedPerformanceChart({ unifiedData }: UnifiedPerforma
     return <p className="text-center text-muted-foreground">Upload data to see performance charts.</p>;
   }
   
-  const ownersList = Array.from(metricsData.keys()).sort(); // Used for mapping lines/bars
+  const ownersList = Array.from(metricsData.keys()).sort();
   
   return (
     <Card>
       <CardHeader>
         <CardTitle>Performance Analysis</CardTitle>
         <CardDescription>
-          Comparing solution quality across participants/solvers (lower scores are better)
+          Comparing solution quality across participants/solvers.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="bestSolutions">
+        <Tabs defaultValue="summary">
           <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="summary">Overall Summary</TabsTrigger>
             <TabsTrigger value="bestSolutions">Best Solutions</TabsTrigger>
             <TabsTrigger value="sizeComparison">By Problem Size</TabsTrigger>
-            <TabsTrigger value="solverStats">Participant/Solver Stats</TabsTrigger>
           </TabsList>
+          
+          <TabsContent value="summary" className="pt-4">
+            <div className="mb-4 text-sm text-center">
+              Aggregated performance metrics for each participant/solver.
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Participant</TableHead>
+                    <TableHead className="text-right">Total Score</TableHead>
+                    <TableHead className="text-right">Avg Score</TableHead>
+                    <TableHead className="text-right">Solved</TableHead>
+                    <TableHead className="text-right">Won</TableHead>
+                    <TableHead className="text-right">Total Time (s)</TableHead>
+                    <TableHead className="text-right">Attempted</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {summaryTableData.map((row) => (
+                    <TableRow key={row.owner}>
+                      <TableCell className="font-medium">{row.owner}</TableCell>
+                      <TableCell className="text-right">{row.totalScore.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">
+                        {row.avgScore === -1 ? "N/A" : row.avgScore.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">{row.solvedCount}</TableCell>
+                      <TableCell className="text-right">{row.bestSolutions}</TableCell>
+                      <TableCell className="text-right">{row.totalTime.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">{row.totalProblems}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </TabsContent>
           
           <TabsContent value="bestSolutions" className="pt-4">
             <div className="mb-4 text-sm text-center">
@@ -160,29 +214,51 @@ export default function UnifiedPerformanceChart({ unifiedData }: UnifiedPerforma
             <ResponsiveContainer width="100%" height={400}>
               <ComposedChart
                 data={sizeData}
-                margin={{ top: 20, right: 30, bottom: 20, left: 30 }}
+                margin={{ top: 20, right: 30, bottom: 60, left: 40 }} 
               >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis 
                   dataKey="size" 
                   type="number"
                   name="Problem Size (Customers)"
-                  label={{ value: 'Problem Size (Customers)', position: 'bottom', offset: 0 }}
+                  label={{ value: 'Problem Size (Customers)', position: 'insideBottom', offset: -25 }}
                   allowDuplicatedCategory={false}
                 />
                 <YAxis 
                   name="Average Score"
-                  label={{ value: 'Average Score (lower is better)', angle: -90, position: 'insideLeft' }}
-                  domain={['dataMin', 'auto']} // Adjust domain slightly
+                  label={{ value: 'Score', angle: -90, position: 'insideLeft', offset: -25 }}
+                  domain={['dataMin', 'auto']}
                 />
                 <Tooltip
-                  formatter={(value: any, name: string) => [
-                    value === null ? 'N/A' : value.toFixed(2), 
-                    name // Owner name
-                  ]}
-                   labelFormatter={(label) => `Size: ${label}`}
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      // Access the representativeInstancesDisplay from the first payload item
+                      // (it should be the same for all payload items at a given x-axis point (label/size))
+                      const representativeDisplay = payload[0].payload.representativeInstancesDisplay || "";
+                      return (
+                        <div className="bg-background p-3 border rounded shadow-sm text-sm">
+                          <p className="font-medium mb-1">Size: {label} {representativeDisplay}</p>
+                          {payload.map(pld => {
+                            const owner = pld.name as string; 
+                            const value = pld.value; 
+                            
+                            const displayValue = typeof value === 'number' 
+                              ? value.toFixed(2) 
+                              : (value === null || value === undefined ? 'N/A' : String(value));
+
+                            return (
+                              <div key={owner} style={{ color: pld.color }}>
+                                {`${owner}: ${displayValue}`}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
                 />
-                <Legend />
+                <Legend verticalAlign="top" wrapperStyle={{ paddingBottom: '20px' }} />
                 {ownersList.map((owner, index) => (
                   <Line
                     key={owner}
@@ -190,71 +266,13 @@ export default function UnifiedPerformanceChart({ unifiedData }: UnifiedPerforma
                     dataKey={owner}
                     name={owner}
                     stroke={generateColor(index)}
-                    connectNulls={true} // Connect lines even if data points are missing
+                    connectNulls={true}
                     dot={{r: 3}}
                     activeDot={{r: 6}}
                     strokeWidth={2}
                   />
                 ))}
               </ComposedChart>
-            </ResponsiveContainer>
-          </TabsContent>
-          
-          <TabsContent value="solverStats" className="pt-4">
-             <div className="mb-4 text-sm text-center">
-              Overall statistics per participant/solver
-            </div>
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart
-                data={solverComparisonData}
-                margin={{ top: 20, right: 30, bottom: 50, left: 30 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="owner" 
-                  angle={-45} 
-                  textAnchor="end" 
-                  height={70}
-                  interval={0} // Show all labels
-                />
-                <YAxis 
-                  yAxisId="left"
-                  label={{ value: 'Avg. Score (lower is better)', angle: -90, position: 'insideLeft' }}
-                  domain={['dataMin', 'auto']}
-                />
-                <YAxis 
-                  yAxisId="right" 
-                  orientation="right"
-                  label={{ value: 'Best Solutions (%)', angle: 90, position: 'insideRight' }}
-                  domain={[0, 100]}
-                  tickFormatter={(value) => `${value}%`}
-                />
-                <Tooltip
-                  formatter={(value: any, name: string) => {
-                    if (name === 'Best Solutions %') {
-                      return [`${value.toFixed(1)}%`, 'Best Solutions'];
-                    }
-                    if (name === 'Average Score') {
-                      return [value !== null ? value.toFixed(2) : 'N/A', name];
-                    }
-                    return [value, name];
-                  }}
-                   labelFormatter={(label) => `${label}`}
-                />
-                <Legend verticalAlign="top" />
-                <Bar 
-                  yAxisId="left" 
-                  dataKey="avgScore" 
-                  name="Average Score" 
-                  fill="#8884d8" 
-                />
-                <Bar 
-                  yAxisId="right" 
-                  dataKey="bestSolutionsPercent" 
-                  name="Best Solutions %" 
-                  fill="#82ca9d" 
-                />
-              </BarChart>
             </ResponsiveContainer>
           </TabsContent>
         </Tabs>

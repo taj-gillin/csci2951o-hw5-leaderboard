@@ -40,7 +40,7 @@ const OwnerVisibilityControl: React.FC<OwnerVisibilityControlProps> = ({ owners,
         <CardTitle className="text-lg">Filter Submissions</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-sm text-muted-foreground">Select submissions to include in the analysis:</p>
+        {/* <p className="text-sm text-muted-foregro und">Select submissions to include in the analysis:</p> */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-2">
           {owners.map(owner => (
             <div key={owner} className="flex items-center space-x-2">
@@ -130,9 +130,9 @@ export default function Home() {
       <Toaster />
       <div className="max-w-7xl mx-auto space-y-8">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">Performance Analysis Tool</h1>
+          <h1 className="text-3xl font-bold mb-2">PA Final Visualizer</h1>
           <p className="text-muted-foreground">
-            Upload and compare results from Leaderboard HTML or Solver LOG files
+            Upload and compare results from leaderboard html or solver log files
           </p>
         </div>
 

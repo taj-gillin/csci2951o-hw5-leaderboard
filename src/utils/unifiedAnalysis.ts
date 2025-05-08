@@ -7,7 +7,8 @@ export interface OwnerMetrics {
   solvedCount: number;
   totalProblems: number;
   bestSolutions: number; // Count of instances where this owner had the best score
-  bySize: Map<number, { score: number; count: number }>; // Map<numCustomers, { total score, count }>
+  totalTime: number; // Sum of time for all solved instances by this owner
+  bySize: Map<number, { score: number; count: number; time: number; instanceNames: string[] }>; // Map<numCustomers, { total score, count, total time }>
 }
 
 // Define the structure for grouping data by instance
@@ -37,6 +38,7 @@ export function calculateUnifiedMetrics(data: UnifiedData): Map<string, OwnerMet
         solvedCount: 0,
         totalProblems: 0,
         bestSolutions: 0,
+        totalTime: 0, // Initialize totalTime
         bySize: new Map()
       });
     }
@@ -48,6 +50,9 @@ export function calculateUnifiedMetrics(data: UnifiedData): Map<string, OwnerMet
       const score = item.score;
       performance.totalScore += score;
       performance.solvedCount++;
+      if (item.time !== null) {
+        performance.totalTime += item.time; // Accumulate time for solved instances
+      }
       
       // Update best score for this instance if needed
       if (!instanceBestScores.has(instance) || score < instanceBestScores.get(instance)!) {
@@ -58,11 +63,17 @@ export function calculateUnifiedMetrics(data: UnifiedData): Map<string, OwnerMet
       if (item.numCustomers !== null) {
         const size = item.numCustomers;
         if (!performance.bySize.has(size)) {
-          performance.bySize.set(size, { score: 0, count: 0 });
+          // Initialize with instanceNames array
+          performance.bySize.set(size, { score: 0, count: 0, time: 0, instanceNames: [] });
         }
         const sizeStats = performance.bySize.get(size)!;
         sizeStats.score += score;
         sizeStats.count++;
+        if (item.time !== null) {
+            sizeStats.time += item.time;
+        }
+        // Add instance name to the list for this size bucket
+        sizeStats.instanceNames.push(item.instance);
       }
     }
   }
@@ -110,7 +121,7 @@ export function groupUnifiedDataByInstance(data: UnifiedData): GroupedByInstance
     // Add or overwrite the entry for this owner for this instance
     // If multiple entries exist for the same owner/instance (e.g., multiple uploads), the last one wins.
     // Consider adding logic here if merging or specific selection is needed.
-    groupedData.get(instance)!.set(owner, item); 
+    groupedData.get(instance)!.set(owner, item);
   }
 
   return groupedData;

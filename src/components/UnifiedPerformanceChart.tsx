@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { UnifiedDataItem, UnifiedData } from '@/types/unified';
-import { calculateUnifiedMetrics, OwnerMetrics } from '@/utils/unifiedAnalysis';
+import { UnifiedData } from '@/types/unified';
+import { calculateUnifiedMetrics } from '@/utils/unifiedAnalysis';
 import {
   ResponsiveContainer,
   XAxis,
@@ -40,6 +40,12 @@ interface SummaryTableRow {
   totalProblems: number;
 }
 
+interface ChartSizeEntry {
+    size: number;
+    representativeInstancesDisplay?: string;
+    [ownerName: string]: number | string | null | undefined; // Scores (number/null) or other properties (string/undefined)
+}
+
 export default function UnifiedPerformanceChart({ unifiedData }: UnifiedPerformanceChartProps) {
   const metricsData = useMemo(() => calculateUnifiedMetrics(unifiedData), [unifiedData]);
 
@@ -62,10 +68,9 @@ export default function UnifiedPerformanceChart({ unifiedData }: UnifiedPerforma
     });
     const allSizes = Array.from(allSizesSet).sort((a, b) => a - b);
 
-    const sizeComparison = allSizes.map(size => {
-      const entry: any = { size };
+    const sizeComparison: ChartSizeEntry[] = allSizes.map(size => {
+      const entry: ChartSizeEntry = { size };
       const instancesForThisSize = new Set<string>();
-      let totalEntriesForThisSize = 0;
 
       owners.forEach(owner => {
         const ownerMetrics = metricsData.get(owner)!;
@@ -73,7 +78,6 @@ export default function UnifiedPerformanceChart({ unifiedData }: UnifiedPerforma
         entry[owner] = (sizeStats && sizeStats.count > 0) ? (sizeStats.score / sizeStats.count) : null;
         if (sizeStats && sizeStats.instanceNames) {
           sizeStats.instanceNames.forEach(name => instancesForThisSize.add(name));
-          totalEntriesForThisSize += sizeStats.count; // Sum of all individual entries making up the averages
         }
       });
 
@@ -81,10 +85,8 @@ export default function UnifiedPerformanceChart({ unifiedData }: UnifiedPerforma
       if (instancesForThisSize.size === 1) {
         representativeInstancesDisplay = `(Instance: ${instancesForThisSize.values().next().value})`;
       } else if (instancesForThisSize.size > 1) {
-        // If there were multiple problem files of the same size, indicate that.
-        // The `totalEntriesForThisSize` reflects the sum of all individual log/leaderboard entries contributing to averages at this size point.
         representativeInstancesDisplay = `(Avg. over ${instancesForThisSize.size} unique problem files of this size)`;
-      } // If instancesForThisSize.size is 0, display remains empty.
+      }
       
       entry.representativeInstancesDisplay = representativeInstancesDisplay;
 
@@ -232,8 +234,6 @@ export default function UnifiedPerformanceChart({ unifiedData }: UnifiedPerforma
                 <Tooltip
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length) {
-                      // Access the representativeInstancesDisplay from the first payload item
-                      // (it should be the same for all payload items at a given x-axis point (label/size))
                       const representativeDisplay = payload[0].payload.representativeInstancesDisplay || "";
                       return (
                         <div className="bg-background p-3 border rounded shadow-sm text-sm">

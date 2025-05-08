@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { UnifiedDataItem, UnifiedData } from '@/types/unified';
-import { groupUnifiedDataByInstance, GroupedByInstance } from '@/utils/unifiedAnalysis';
+import { groupUnifiedDataByInstance } from '@/utils/unifiedAnalysis';
 import { Badge } from "@/components/ui/badge";
 
 interface InstanceComparisonTableProps {

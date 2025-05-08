@@ -1,7 +1,23 @@
-import { LeaderboardData, Submission, ResultEntry } from "@/types/leaderboard";
+import { LeaderboardData, Submission } from "@/types/leaderboard";
 import { UnifiedDataItem } from "@/types/unified";
 import { parseGenericInstanceName } from "./commonParserUtils";
 import { v4 as uuidv4 } from 'uuid';
+
+// Define interfaces for the expected structure of Gradescope leaderboard JSON
+interface LeaderboardColumn {
+  name: string;
+  order?: string; // Optional, as not all columns might have it
+  // Add other properties if they exist and are needed, e.g., type, hidden, etc.
+}
+
+// Updated LeaderboardEntry interface
+interface LeaderboardEntry {
+  name: string; 
+  "Total time"?: number;
+  assignment_submission_id?: number;
+  // For dynamic problem instance keys, their values are strings (e.g., "SCORE [TIME]" or "-- [TIME]") or null/undefined
+  [problemInstance: string]: string | number | null | undefined; 
+}
 
 /**
  * Parses the client-side rendered HTML of a Gradescope-like leaderboard table
@@ -30,7 +46,7 @@ export function parseLeaderboardHtmlToUnifiedData(
     return [];
   }
 
-  let leaderboardData;
+  let leaderboardData: { columns: LeaderboardColumn[], entries: LeaderboardEntry[] };
   try {
     leaderboardData = JSON.parse(reactPropsJson);
   } catch (error) {
@@ -46,12 +62,12 @@ export function parseLeaderboardHtmlToUnifiedData(
 
   // Identify problem instance columns. These are columns that are not "Total time", "Rank", "Name", etc.
   // Gradescope data-react-props has columns as an array of objects like {name: "colName", order: "asc/desc"} or just {name: "colName"}
-  const knownNonProblemColumns = ["Total time", "Rank", "Submission Name", "Avg Time", "Submissions", "Problems Solved", "name"]; // 'name' in react-props might be entry name
+  const knownNonProblemColumns = ["Total time", "Rank", "Submission Name", "Avg Time", "Submissions", "Problems Solved", "name", "assignment_submission_id"];
   const problemInstanceColumns = columns
-    .map((col: any) => col.name) // Extract the name from each column object
+    .map((col: LeaderboardColumn) => col.name) // Extract the name from each column object
     .filter((name: string) => name && !knownNonProblemColumns.includes(name));
 
-  entries.forEach((entry: any) => {
+  entries.forEach((entry: LeaderboardEntry) => {
     const participantName = entry.name || "Unknown Participant";
 
     problemInstanceColumns.forEach((problemInstance: string) => {
